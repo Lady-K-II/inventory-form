@@ -192,11 +192,15 @@ function showStep(i) {
   document.getElementById('addAnotherBtn').style.display = isSuccess ? 'inline-block' : 'none';
   if (isReview) buildReview();
   updateProgress();
+  document.getElementById('statusMsg').textContent = '';
+  if (lastGoDelta > 0) triggerAutoListenForStep(i);
 }
 
+var lastGoDelta = 1;
 function go(delta) {
   var next = current + delta;
   if (next < 0 || next > TOTAL_STEPS - 1) return;
+  lastGoDelta = delta;
   current = next;
   showStep(current);
 }
@@ -261,7 +265,146 @@ document.getElementById('photoInput').addEventListener('change', function (e) {
   reader.readAsDataURL(file);
 });
 
+// ---- Voice input ----
 var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+var autoListenTimer = null;
+var pendingSequence = null;
+
+var CATEGORY_OPTIONS = ['Engine', 'Generator', 'Electrical', 'HVAC', 'Watermaker', 'Plumbing',
+  'Deck/Crane', 'Safety Equipment', 'Tender/Outboard', 'Galley',
+  'Navigation/Electronics', 'Consumables', 'Other'];
+
+function startRecognition(onResult, onFail) {
+  if (!Recognition) { onFail('unsupported'); return; }
+  var recog = new Recognition();
+  recog.lang = 'en-US';
+  recog.interimResults = false;
+  recog.maxAlternatives = 1;
+  document.querySelectorAll('.mic-btn').forEach(function (b) { b.classList.add('listening'); });
+  try {
+    recog.start();
+  } catch (e) {
+    document.querySelectorAll('.mic-btn').forEach(function (b) { b.classList.remove('listening'); });
+    onFail(e.message);
+    return;
+  }
+  recog.onresult = function (event) {
+    onResult(event.results[0][0].transcript);
+  };
+  recog.onend = function () {
+    document.querySelectorAll('.mic-btn').forEach(function (b) { b.classList.remove('listening'); });
+  };
+  recog.onerror = function (event) { onFail(event.error); };
+}
+
+function matchAgainstList(spoken, options) {
+  var s = spoken.toLowerCase().trim();
+  for (var i = 0; i < options.length; i++) {
+    var o = options[i].toLowerCase();
+    if (s.indexOf(o) !== -1 || o.indexOf(s) !== -1) return options[i];
+  }
+  return null;
+}
+
+function extractNumber(spoken) {
+  var m = spoken.match(/\d+(\.\d+)?/);
+  return m ? m[0] : null;
+}
+
+function autoVoiceText(fieldId) {
+  startRecognition(
+    function (text) {
+      document.getElementById(fieldId).value = text;
+      setTimeout(function () { go(1); }, 500);
+    },
+    function () { }
+  );
+}
+
+function autoVoiceDropdownOrNew(selectId, newId, newRowId) {
+  startRecognition(
+    function (text) {
+      var select = document.getElementById(selectId);
+      var options = Array.prototype.map.call(select.options, function (o) { return o.value; })
+        .filter(function (v) { return v && v !== '__new__'; });
+      var match = matchAgainstList(text, options);
+      if (match) {
+        select.value = match;
+        document.getElementById(newRowId).style.display = 'none';
+      } else {
+        select.value = '__new__';
+        document.getElementById(newId).value = text;
+        document.getElementById(newRowId).style.display = 'block';
+      }
+      setTimeout(function () { go(1); }, 500);
+    },
+    function () { }
+  );
+}
+
+function autoVoiceCategory() {
+  startRecognition(
+    function (text) {
+      var match = matchAgainstList(text, CATEGORY_OPTIONS);
+      if (match) {
+        document.getElementById('categorySelect').value = match;
+        setTimeout(function () { go(1); }, 500);
+      } else {
+        document.getElementById('statusMsg').textContent =
+          'Did not recognize a category from "' + text + '". Tap to select manually.';
+      }
+    },
+    function () { }
+  );
+}
+
+function autoVoiceYesNo() {
+  startRecognition(
+    function (text) {
+      var s = text.toLowerCase();
+      var isYes = /\b(yes|yeah|yep|correct|affirmative)\b/.test(s);
+      var isNo = /\b(no|nope|negative)\b/.test(s);
+      if (isYes) { document.getElementById('criticalSelect').value = 'Y'; setTimeout(function () { go(1); }, 500); }
+      else if (isNo) { document.getElementById('criticalSelect').value = 'N'; setTimeout(function () { go(1); }, 500); }
+      else {
+        document.getElementById('statusMsg').textContent =
+          'Did not catch yes or no from "' + text + '". Tap to select manually.';
+      }
+    },
+    function () { }
+  );
+}
+
+function autoVoiceNumberPair(field1, field2, isSecondText) {
+  startRecognition(
+    function (text) {
+      var num = extractNumber(text);
+      if (num !== null) {
+        document.getElementById(field1).value = num;
+        document.getElementById('statusMsg').textContent = '';
+        autoListenTimer = setTimeout(function () {
+          startRecognition(
+            function (text2) {
+              if (isSecondText) {
+                document.getElementById(field2).value = text2;
+              } else {
+                var num2 = extractNumber(text2);
+                if (num2 !== null) document.getElementById(field2).value = num2;
+              }
+              setTimeout(function () { go(1); }, 500);
+            },
+            function () { }
+          );
+        }, 400);
+      } else {
+        document.getElementById('statusMsg').textContent =
+          'Did not catch a number from "' + text + '". Type it in manually.';
+      }
+    },
+    function () { }
+  );
+}
+
 document.querySelectorAll('.mic-btn').forEach(function (btn) {
   btn.addEventListener('click', function () {
     if (!Recognition) {
@@ -270,34 +413,42 @@ document.querySelectorAll('.mic-btn').forEach(function (btn) {
     }
     var targetId = btn.dataset.target;
     var selectId = btn.dataset.select;
-    var recog = new Recognition();
-    recog.lang = 'en-US';
-    recog.interimResults = false;
-    recog.maxAlternatives = 1;
-    btn.classList.add('listening');
-    try {
-      recog.start();
-    } catch (e) {
-      btn.classList.remove('listening');
-      alert('Mic failed to start: ' + e.message);
-      return;
-    }
-    recog.onresult = function (event) {
-      var text = event.results[0][0].transcript;
-      var el = document.getElementById(targetId);
-      el.value = text;
-      if (selectId) {
-        var rowId = selectId === 'systemSelect' ? 'systemNewRow' : 'locationNewRow';
-        document.getElementById(rowId).style.display = 'block';
+    startRecognition(
+      function (text) {
+        var el = document.getElementById(targetId);
+        el.value = text;
+        if (selectId) {
+          var rowId = selectId === 'systemSelect' ? 'systemNewRow' : 'locationNewRow';
+          document.getElementById(rowId).style.display = 'block';
+        }
+      },
+      function (err) {
+        alert('Mic error: ' + err + '. If this says not-allowed, grant microphone permission to this site in your browser settings and try again.');
       }
-    };
-    recog.onend = function () { btn.classList.remove('listening'); };
-    recog.onerror = function (event) {
-      btn.classList.remove('listening');
-      alert('Mic error: ' + event.error + '. If this says not-allowed, grant microphone permission to this site in your browser settings and try again.');
-    };
+    );
   });
 });
+
+document.querySelectorAll('input[type=text], input[type=number], textarea').forEach(function (el) {
+  el.addEventListener('focus', function () { clearTimeout(autoListenTimer); });
+});
+
+function triggerAutoListenForStep(i) {
+  clearTimeout(autoListenTimer);
+  if (!Recognition) return;
+  autoListenTimer = setTimeout(function () {
+    if (i === 1) autoVoiceDropdownOrNew('systemSelect', 'systemNew', 'systemNewRow');
+    else if (i === 2) autoVoiceText('partName');
+    else if (i === 3) autoVoiceCategory();
+    else if (i === 4) autoVoiceText('description');
+    else if (i === 5) autoVoiceDropdownOrNew('locationSelect', 'locationNew', 'locationNewRow');
+    else if (i === 6) autoVoiceText('manufacturer');
+    else if (i === 7) autoVoiceNumberPair('qty', 'minStock', false);
+    else if (i === 8) autoVoiceNumberPair('unitCost', 'supplier', true);
+    else if (i === 10) autoVoiceYesNo();
+    else if (i === 11) autoVoiceText('notes');
+  }, 600);
+}
 
 function fieldVal(id) { return document.getElementById(id).value || ''; }
 function resolvedSystem() {
