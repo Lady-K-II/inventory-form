@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lady K II - Add Inventory Item</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; background: #0f1f3d; color: #1a1a1a; margin: 0; padding: 0; }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 18px; color: #fff; text-align: center; margin: 16px 0 4px; }
+  .progress { height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden; margin-bottom: 20px; }
+  .progress-bar { height: 100%; background: #4f9cf9; width: 0%; transition: width .25s ease; }
+  .card { background: #fff; border-radius: 12px; padding: 22px 18px; box-shadow: 0 4px 18px rgba(0,0,0,0.25); min-height: 220px; display: flex; flex-direction: column; justify-content: space-between; }
+  .step { display: none; }
+  .step.active { display: block; }
+  label.q { display: block; font-size: 15px; font-weight: bold; color: #1F3864; margin-bottom: 10px; }
+  .field-row { display: flex; gap: 8px; align-items: stretch; }
+  input[type=text], input[type=number], input[type=date], select, textarea { flex: 1; font-family: Arial, sans-serif; font-size: 15px; padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px; width: 100%; }
+  textarea { resize: vertical; min-height: 60px; }
+  .mic-btn { flex: 0 0 44px; border: none; border-radius: 8px; background: #1F3864; color: #fff; font-size: 13px; font-weight: bold; cursor: pointer; }
+  .mic-btn.listening { background: #d1483d; }
+  .hint { font-size: 12px; color: #757575; margin-top: 6px; }
+  .nav { display: flex; justify-content: space-between; margin-top: 22px; }
+  button.nav-btn { font-family: Arial, sans-serif; font-size: 15px; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; }
+  .btn-back { background: #e5e5e5; color: #333; }
+  .btn-next { background: #1F3864; color: #fff; }
+  .btn-submit { background: #2e7d32; color: #fff; }
+  .photo-preview { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-top: 10px; display: none; }
+  .review-line { font-size: 13px; padding: 6px 0; border-bottom: 1px solid #eee; }
+  .review-line b { color: #1F3864; }
+  .status { text-align: center; color: #fff; margin-top: 14px; font-size: 13px; }
+  .add-new-row { margin-top: 8px; display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Lady K II - Add Inventory Item</h1>
+  <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+  <div class="card">
+
+    <div class="step active" data-step="0">
+      <label class="q">Photo</label>
+      <input type="file" id="photoInput" accept="image/*" capture="environment">
+      <img id="photoPreview" class="photo-preview">
+      <div class="hint">Optional. Skip if you will add it later.</div>
+    </div>
+
+    <div class="step" data-step="1">
+      <label class="q">System / Machinery?</label>
+      <div class="field-row">
+        <select id="systemSelect"></select>
+        <button type="button" class="mic-btn" data-target="systemNew" data-select="systemSelect">MIC</button>
+      </div>
+      <div class="add-new-row" id="systemNewRow">
+        <input type="text" id="systemNew" placeholder="Type new system">
+      </div>
+    </div>
+
+    <div class="step" data-step="2">
+      <label class="q">Part name?</label>
+      <div class="field-row">
+        <input type="text" id="partName" placeholder="e.g. Oil filter">
+        <button type="button" class="mic-btn" data-target="partName">MIC</button>
+      </div>
+    </div>
+
+    <div class="step" data-step="3">
+      <label class="q">Category?</label>
+      <select id="categorySelect"></select>
+    </div>
+
+    <div class="step" data-step="4">
+      <label class="q">Description?</label>
+      <div class="field-row">
+        <textarea id="description" placeholder="Brief description, spec, model number"></textarea>
+        <button type="button" class="mic-btn" data-target="description">MIC</button>
+      </div>
+    </div>
+
+    <div class="step" data-step="5">
+      <label class="q">Location onboard?</label>
+      <div class="field-row">
+        <select id="locationSelect"></select>
+        <button type="button" class="mic-btn" data-target="locationNew" data-select="locationSelect">MIC</button>
+      </div>
+      <div class="add-new-row" id="locationNewRow">
+        <input type="text" id="locationNew" placeholder="Type new location">
+      </div>
+    </div>
+
+    <div class="step" data-step="6">
+      <label class="q">Manufacturer / part number?</label>
+      <div class="field-row">
+        <input type="text" id="manufacturer">
+        <button type="button" class="mic-btn" data-target="manufacturer">MIC</button>
+      </div>
+    </div>
+
+    <div class="step" data-step="7">
+      <label class="q">Quantity on hand and minimum stock required?</label>
+      <div class="field-row">
+        <input type="number" id="qty" placeholder="Qty on hand" min="0">
+        <input type="number" id="minStock" placeholder="Min required" min="0">
+      </div>
+    </div>
+
+    <div class="step" data-step="8">
+      <label class="q">Unit cost and supplier?</label>
+      <div class="field-row">
+        <input type="number" id="unitCost" placeholder="Unit cost (EUR)" step="0.01" min="0">
+      </div>
+      <div class="field-row" style="margin-top:8px">
+        <input type="text" id="supplier" placeholder="Supplier / source">
+        <button type="button" class="mic-btn" data-target="supplier">MIC</button>
+      </div>
+    </div>
+
+    <div class="step" data-step="9">
+      <label class="q">Purchase date and expiration date?</label>
+      <div class="field-row">
+        <input type="date" id="purchaseDate">
+      </div>
+      <div class="field-row" style="margin-top:8px">
+        <input type="date" id="expirationDate">
+      </div>
+      <div class="hint">Leave expiration blank for parts with no shelf life.</div>
+    </div>
+
+    <div class="step" data-step="10">
+      <label class="q">Critical spare?</label>
+      <select id="criticalSelect">
+        <option value="N" selected>No</option>
+        <option value="Y">Yes</option>
+      </select>
+    </div>
+
+    <div class="step" data-step="11">
+      <label class="q">Any notes?</label>
+      <div class="field-row">
+        <textarea id="notes" placeholder="Lead time, order status, anything else"></textarea>
+        <button type="button" class="mic-btn" data-target="notes">MIC</button>
+      </div>
+    </div>
+
+    <div class="step" data-step="12">
+      <label class="q">Review</label>
+      <div id="reviewBox"></div>
+    </div>
+
+    <div class="step" data-step="13" id="successStep">
+      <div style="text-align:center; padding: 20px 0;">
+        <div style="font-size:48px;">&#9989;</div>
+        <div style="font-size:18px; font-weight:bold; color:#1F3864; margin-top:10px;">Saved to Inventory</div>
+        <div style="font-size:13px; color:#757575; margin-top:6px;" id="successDetail"></div>
+      </div>
+    </div>
+
+    <div class="nav" id="navBar">
+      <button type="button" class="nav-btn btn-back" id="backBtn" onclick="go(-1)">Back</button>
+      <button type="button" class="nav-btn btn-next" id="nextBtn" onclick="go(1)">Next</button>
+      <button type="button" class="nav-btn btn-submit" id="submitBtn" onclick="submitForm()" style="display:none">Save to Inventory</button>
+      <button type="button" class="nav-btn btn-next" id="addAnotherBtn" onclick="resetForm()" style="display:none">Add Another Item</button>
+    </div>
+  </div>
+  <div class="status" id="statusMsg"></div>
+</div>
+
+<script>
+var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxb1kqqkqcgeFFJXs8mXntI_uU9G3g-U-pYxH4KMOPeBc_uBOq1_mU17aDRb_VCJfbiNg/exec';
+
+var REVIEW_STEP = 12;
+var SUCCESS_STEP = 13;
+var TOTAL_STEPS = 13;
+var current = 0;
+var photoBase64 = null, photoMime = null, photoFilename = null;
+
+function updateProgress() {
+  var pct = current >= SUCCESS_STEP ? 100 : Math.round((current / (TOTAL_STEPS - 1)) * 100);
+  document.getElementById('progressBar').style.width = pct + '%';
+}
+
+function showStep(i) {
+  document.querySelectorAll('.step').forEach(function (el) {
+    el.classList.toggle('active', Number(el.dataset.step) === i);
+  });
+  var isReview = i === REVIEW_STEP;
+  var isSuccess = i === SUCCESS_STEP;
+  document.getElementById('backBtn').style.visibility = (i === 0 || isSuccess) ? 'hidden' : 'visible';
+  document.getElementById('nextBtn').style.display = (isReview || isSuccess) ? 'none' : 'inline-block';
+  document.getElementById('submitBtn').style.display = isReview ? 'inline-block' : 'none';
+  document.getElementById('addAnotherBtn').style.display = isSuccess ? 'inline-block' : 'none';
+  if (isReview) buildReview();
+  updateProgress();
+}
+
+function go(delta) {
+  var next = current + delta;
+  if (next < 0 || next > TOTAL_STEPS - 1) return;
+  current = next;
+  showStep(current);
+}
+
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  var t = e.target;
+  if (t.tagName === 'TEXTAREA') return;
+  if (t.tagName === 'INPUT' && t.type === 'file') return;
+  if (current === REVIEW_STEP || current === SUCCESS_STEP) return;
+  e.preventDefault();
+  go(1);
+});
+
+fetch(SCRIPT_URL + '?action=getFormData')
+  .then(function (r) { return r.json(); })
+  .then(function (data) {
+    if (data.error) { console.error(data.error); return; }
+    fillSelect('systemSelect', data.systems, 'System');
+    fillSelect('locationSelect', data.locations, 'Location');
+    fillSelect('categorySelect', data.categories, 'Category');
+  })
+  .catch(function (err) {
+    document.getElementById('statusMsg').textContent = 'Could not load dropdown data: ' + err.message;
+  });
+
+function fillSelect(id, values, label) {
+  var sel = document.getElementById(id);
+  sel.innerHTML = '';
+  var placeholder = document.createElement('option');
+  placeholder.value = ''; placeholder.textContent = 'Select ' + label;
+  sel.appendChild(placeholder);
+  values.forEach(function (v) {
+    var opt = document.createElement('option');
+    opt.value = v; opt.textContent = v;
+    sel.appendChild(opt);
+  });
+  var addNew = document.createElement('option');
+  addNew.value = '__new__'; addNew.textContent = '+ Add new';
+  sel.appendChild(addNew);
+}
+
+['systemSelect', 'locationSelect'].forEach(function (id) {
+  document.getElementById(id).addEventListener('change', function () {
+    var rowId = id === 'systemSelect' ? 'systemNewRow' : 'locationNewRow';
+    document.getElementById(rowId).style.display = this.value === '__new__' ? 'block' : 'none';
+  });
+});
+
+document.getElementById('photoInput').addEventListener('change', function (e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  photoMime = file.type;
+  photoFilename = file.name;
+  var reader = new FileReader();
+  reader.onload = function () {
+    photoBase64 = reader.result.split(',')[1];
+    var img = document.getElementById('photoPreview');
+    img.src = reader.result;
+    img.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+});
+
+var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+document.querySelectorAll('.mic-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    if (!Recognition) {
+      alert('Voice input is not supported in this browser. Try Chrome.');
+      return;
+    }
+    var targetId = btn.dataset.target;
+    var selectId = btn.dataset.select;
+    var recog = new Recognition();
+    recog.lang = 'en-US';
+    recog.interimResults = false;
+    recog.maxAlternatives = 1;
+    btn.classList.add('listening');
+    try {
+      recog.start();
+    } catch (e) {
+      btn.classList.remove('listening');
+      alert('Mic failed to start: ' + e.message);
+      return;
+    }
+    recog.onresult = function (event) {
+      var text = event.results[0][0].transcript;
+      var el = document.getElementById(targetId);
+      el.value = text;
+      if (selectId) {
+        var rowId = selectId === 'systemSelect' ? 'systemNewRow' : 'locationNewRow';
+        document.getElementById(rowId).style.display = 'block';
+      }
+    };
+    recog.onend = function () { btn.classList.remove('listening'); };
+    recog.onerror = function (event) {
+      btn.classList.remove('listening');
+      alert('Mic error: ' + event.error + '. If this says not-allowed, grant microphone permission to this site in your browser settings and try again.');
+    };
+  });
+});
+
+function fieldVal(id) { return document.getElementById(id).value || ''; }
+function resolvedSystem() {
+  var v = fieldVal('systemSelect');
+  return v === '__new__' ? fieldVal('systemNew') : v;
+}
+function resolvedLocation() {
+  var v = fieldVal('locationSelect');
+  return v === '__new__' ? fieldVal('locationNew') : v;
+}
+
+function buildReview() {
+  var rows = [
+    ['System', resolvedSystem()], ['Part', fieldVal('partName')],
+    ['Category', fieldVal('categorySelect')], ['Description', fieldVal('description')],
+    ['Location', resolvedLocation()], ['Manufacturer', fieldVal('manufacturer')],
+    ['Qty on hand', fieldVal('qty')], ['Min stock', fieldVal('minStock')],
+    ['Unit cost', fieldVal('unitCost')], ['Supplier', fieldVal('supplier')],
+    ['Purchase date', fieldVal('purchaseDate')], ['Expiration date', fieldVal('expirationDate')],
+    ['Critical spare', fieldVal('criticalSelect')], ['Notes', fieldVal('notes')],
+    ['Photo attached', photoBase64 ? 'Yes' : 'No']
+  ];
+  document.getElementById('reviewBox').innerHTML = rows.map(function (r) {
+    return '<div class="review-line"><b>' + r[0] + ':</b> ' + (r[1] || '--') + '</div>';
+  }).join('');
+}
+
+function buildFilename() {
+  var clean = function (s) { return (s || '').trim().replace(/\s+/g, '-'); };
+  var d = fieldVal('purchaseDate') || new Date().toISOString().slice(0, 10);
+  var dateToken = d.replace(/-/g, '');
+  return clean(resolvedSystem()) + '_' + clean(fieldVal('partName')) + '_' +
+         clean(resolvedLocation()) + '_' + dateToken + '.jpg';
+}
+
+function postToScript(payload) {
+  return fetch(SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  }).then(function (r) { return r.json(); });
+}
+
+function submitForm() {
+  document.getElementById('submitBtn').disabled = true;
+  document.getElementById('statusMsg').textContent = 'Saving...';
+  var partNameForSuccess = fieldVal('partName');
+  var item = {
+    partName: fieldVal('partName'),
+    system: resolvedSystem(),
+    category: fieldVal('categorySelect'),
+    description: fieldVal('description'),
+    location: resolvedLocation(),
+    manufacturer: fieldVal('manufacturer'),
+    qty: fieldVal('qty'),
+    minStock: fieldVal('minStock'),
+    unitCost: fieldVal('unitCost'),
+    supplier: fieldVal('supplier'),
+    purchaseDate: fieldVal('purchaseDate'),
+    expirationDate: fieldVal('expirationDate'),
+    critical: fieldVal('criticalSelect'),
+    notes: fieldVal('notes'),
+    filename: buildFilename(),
+    photoUrl: null
+  };
+
+  function finishSubmit() {
+    postToScript({ action: 'submitItem', item: item })
+      .then(function (res) {
+        if (res.error) throw new Error(res.error);
+        document.getElementById('statusMsg').textContent = '';
+        document.getElementById('successDetail').textContent =
+          partNameForSuccess ? '"' + partNameForSuccess + '" added, row ' + res.row : 'Row ' + res.row;
+        current = SUCCESS_STEP;
+        showStep(current);
+        document.getElementById('submitBtn').disabled = false;
+      })
+      .catch(function (err) {
+        document.getElementById('statusMsg').textContent = 'Error: ' + err.message;
+        document.getElementById('submitBtn').disabled = false;
+      });
+  }
+
+  if (photoBase64) {
+    postToScript({ action: 'uploadPhoto', base64Data: photoBase64, mimeType: photoMime, filename: item.filename })
+      .then(function (res) {
+        if (res.error) throw new Error(res.error);
+        item.photoUrl = res.url;
+        item.filename = res.name;
+        finishSubmit();
+      })
+      .catch(function (err) {
+        document.getElementById('statusMsg').textContent = 'Photo upload failed: ' + err.message;
+        document.getElementById('submitBtn').disabled = false;
+      });
+  } else {
+    finishSubmit();
+  }
+}
+
+function resetForm() {
+  ['partName', 'description', 'manufacturer', 'qty', 'minStock', 'unitCost', 'supplier',
+   'expirationDate', 'notes', 'systemNew', 'locationNew'].forEach(function (id) {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('systemSelect').value = '';
+  document.getElementById('locationSelect').value = '';
+  document.getElementById('categorySelect').value = '';
+  document.getElementById('criticalSelect').value = 'N';
+  document.getElementById('systemNewRow').style.display = 'none';
+  document.getElementById('locationNewRow').style.display = 'none';
+  document.getElementById('photoInput').value = '';
+  document.getElementById('photoPreview').style.display = 'none';
+  photoBase64 = null; photoMime = null; photoFilename = null;
+  document.getElementById('purchaseDate').valueAsDate = new Date();
+  document.getElementById('statusMsg').textContent = '';
+  current = 0;
+  showStep(0);
+  fetch(SCRIPT_URL + '?action=getFormData')
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      fillSelect('systemSelect', data.systems, 'System');
+      fillSelect('locationSelect', data.locations, 'Location');
+      fillSelect('categorySelect', data.categories, 'Category');
+    });
+}
+
+document.getElementById('purchaseDate').valueAsDate = new Date();
+showStep(0);
+</script>
+</body>
+</html>
