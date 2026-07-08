@@ -31,6 +31,7 @@
   .review-line b { color: #1F3864; }
   .status { text-align: center; color: #fff; margin-top: 14px; font-size: 13px; }
   .add-new-row { margin-top: 8px; display: none; }
+  .voice-legend { text-align: center; font-size: 11px; color: #9aa5b8; margin-top: 14px; }
 </style>
 </head>
 <body>
@@ -162,6 +163,7 @@
       <button type="button" class="nav-btn btn-submit" id="submitBtn" onclick="submitForm()" style="display:none">Save to Inventory</button>
       <button type="button" class="nav-btn btn-next" id="addAnotherBtn" onclick="resetForm()" style="display:none">Add Another Item</button>
     </div>
+    <div class="voice-legend">Say: Next, Back, Skip, Repeat, Delete, List, Submit</div>
   </div>
   <div class="status" id="statusMsg"></div>
 </div>
@@ -268,7 +270,6 @@ document.getElementById('photoInput').addEventListener('change', function (e) {
 // ---- Voice input ----
 var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 var autoListenTimer = null;
-var pendingSequence = null;
 
 var CATEGORY_OPTIONS = ['Engine', 'Generator', 'Electrical', 'HVAC', 'Watermaker', 'Plumbing',
   'Deck/Crane', 'Safety Equipment', 'Tender/Outboard', 'Galley',
@@ -289,7 +290,9 @@ function startRecognition(onResult, onFail) {
     return;
   }
   recog.onresult = function (event) {
-    onResult(event.results[0][0].transcript);
+    var text = event.results[0][0].transcript;
+    var handled = tryGlobalCommand(text);
+    if (!handled) onResult(text);
   };
   recog.onend = function () {
     document.querySelectorAll('.mic-btn').forEach(function (b) { b.classList.remove('listening'); });
@@ -297,31 +300,96 @@ function startRecognition(onResult, onFail) {
   recog.onerror = function (event) { onFail(event.error); };
 }
 
-function matchAgainstList(spoken, options) {
-  var s = spoken.toLowerCase().trim();
-  for (var i = 0; i < options.length; i++) {
-    var o = options[i].toLowerCase();
-    if (s.indexOf(o) !== -1 || o.indexOf(s) !== -1) return options[i];
+function tryGlobalCommand(text) {
+  var s = text.toLowerCase().trim().replace(/[.!?]+$/, '');
+  if (current === SUCCESS_STEP && (s === 'next' || s === 'add another' || s === 'another')) {
+    resetForm(); return true;
   }
-  return null;
+  if (s === 'next' || s === 'skip') { go(1); return true; }
+  if (s === 'back') { go(-1); return true; }
+  if (s === 'repeat' || s === 'redo') {
+    document.getElementById('statusMsg').textContent = '';
+    triggerAutoListenForStep(current);
+    return true;
+  }
+  if (s === 'delete' || s === 'clear') {
+    clearCurrentStepFields();
+    document.getElementById('statusMsg').textContent = 'Cleared.';
+    triggerAutoListenForStep(current);
+    return true;
+  }
+  if (s === 'list' || s === 'review') {
+    lastGoDelta = 1;
+    current = REVIEW_STEP;
+    showStep(current);
+    speakReview();
+    return true;
+  }
+  if (s === 'submit' || s === 'save') {
+    if (current === REVIEW_STEP) submitForm();
+    return true;
+  }
+  return false;
 }
 
-function extractNumber(spoken) {
-  var m = spoken.match(/\d+(\.\d+)?/);
-  return m ? m[0] : null;
+function clearCurrentStepFields() {
+  if (current === 1) {
+    document.getElementById('systemSelect').value = '';
+    document.getElementById('systemNew').value = '';
+    document.getElementById('systemNewRow').style.display = 'none';
+  } else if (current === 2) {
+    document.getElementById('partName').value = '';
+  } else if (current === 3) {
+    document.getElementById('categorySelect').value = '';
+  } else if (current === 4) {
+    document.getElementById('description').value = '';
+  } else if (current === 5) {
+    document.getElementById('locationSelect').value = '';
+    document.getElementById('locationNew').value = '';
+    document.getElementById('locationNewRow').style.display = 'none';
+  } else if (current === 6) {
+    document.getElementById('manufacturer').value = '';
+  } else if (current === 7) {
+    document.getElementById('qty').value = '';
+    document.getElementById('minStock').value = '';
+  } else if (current === 8) {
+    document.getElementById('unitCost').value = '';
+    document.getElementById('supplier').value = '';
+  } else if (current === 10) {
+    document.getElementById('criticalSelect').value = 'N';
+  } else if (current === 11) {
+    document.getElementById('notes').value = '';
+  }
+}
+
+function speakReview() {
+  if (!window.speechSynthesis) return;
+  setTimeout(function () {
+    var text = document.getElementById('reviewBox').innerText.replace(/\n/g, '. ');
+    var utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'en-US';
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utter);
+  }, 300);
 }
 
 function autoVoiceText(fieldId) {
+  var stepAtCall = current;
   startRecognition(
     function (text) {
       document.getElementById(fieldId).value = text;
       setTimeout(function () { go(1); }, 500);
     },
-    function () { }
+    function (err) {
+      if (err !== 'not-allowed' && current === stepAtCall) {
+        autoListenTimer = setTimeout(function () { autoVoiceText(fieldId); }, 600);
+      }
+    }
   );
 }
 
 function autoVoiceDropdownOrNew(selectId, newId, newRowId) {
+  var stepAtCall = current;
   startRecognition(
     function (text) {
       var select = document.getElementById(selectId);
@@ -338,11 +406,30 @@ function autoVoiceDropdownOrNew(selectId, newId, newRowId) {
       }
       setTimeout(function () { go(1); }, 500);
     },
-    function () { }
+    function (err) {
+      if (err !== 'not-allowed' && current === stepAtCall) {
+        autoListenTimer = setTimeout(function () { autoVoiceDropdownOrNew(selectId, newId, newRowId); }, 600);
+      }
+    }
   );
 }
 
+function matchAgainstList(spoken, options) {
+  var s = spoken.toLowerCase().trim();
+  for (var i = 0; i < options.length; i++) {
+    var o = options[i].toLowerCase();
+    if (s.indexOf(o) !== -1 || o.indexOf(s) !== -1) return options[i];
+  }
+  return null;
+}
+
+function extractNumber(spoken) {
+  var m = spoken.match(/\d+(\.\d+)?/);
+  return m ? m[0] : null;
+}
+
 function autoVoiceCategory() {
+  var stepAtCall = current;
   startRecognition(
     function (text) {
       var match = matchAgainstList(text, CATEGORY_OPTIONS);
@@ -351,14 +438,20 @@ function autoVoiceCategory() {
         setTimeout(function () { go(1); }, 500);
       } else {
         document.getElementById('statusMsg').textContent =
-          'Did not recognize a category from "' + text + '". Tap to select manually.';
+          'Did not recognize a category from "' + text + '". Say it again, or say a category name.';
+        if (current === stepAtCall) autoListenTimer = setTimeout(autoVoiceCategory, 600);
       }
     },
-    function () { }
+    function (err) {
+      if (err !== 'not-allowed' && current === stepAtCall) {
+        autoListenTimer = setTimeout(autoVoiceCategory, 600);
+      }
+    }
   );
 }
 
 function autoVoiceYesNo() {
+  var stepAtCall = current;
   startRecognition(
     function (text) {
       var s = text.toLowerCase();
@@ -368,14 +461,20 @@ function autoVoiceYesNo() {
       else if (isNo) { document.getElementById('criticalSelect').value = 'N'; setTimeout(function () { go(1); }, 500); }
       else {
         document.getElementById('statusMsg').textContent =
-          'Did not catch yes or no from "' + text + '". Tap to select manually.';
+          'Did not catch yes or no from "' + text + '". Say yes or no.';
+        if (current === stepAtCall) autoListenTimer = setTimeout(autoVoiceYesNo, 600);
       }
     },
-    function () { }
+    function (err) {
+      if (err !== 'not-allowed' && current === stepAtCall) {
+        autoListenTimer = setTimeout(autoVoiceYesNo, 600);
+      }
+    }
   );
 }
 
 function autoVoiceNumberPair(field1, field2, isSecondText) {
+  var stepAtCall = current;
   startRecognition(
     function (text) {
       var num = extractNumber(text);
@@ -387,21 +486,83 @@ function autoVoiceNumberPair(field1, field2, isSecondText) {
             function (text2) {
               if (isSecondText) {
                 document.getElementById(field2).value = text2;
+                setTimeout(function () { go(1); }, 500);
               } else {
                 var num2 = extractNumber(text2);
-                if (num2 !== null) document.getElementById(field2).value = num2;
+                if (num2 !== null) {
+                  document.getElementById(field2).value = num2;
+                  setTimeout(function () { go(1); }, 500);
+                } else {
+                  document.getElementById('statusMsg').textContent =
+                    'Did not catch a number for the second value. Say it again.';
+                  if (current === stepAtCall) {
+                    autoListenTimer = setTimeout(function () {
+                      autoVoiceNumberPairSecondOnly(field2, isSecondText, stepAtCall);
+                    }, 600);
+                  }
+                }
               }
-              setTimeout(function () { go(1); }, 500);
             },
-            function () { }
+            function (err) {
+              if (err !== 'not-allowed' && current === stepAtCall) {
+                autoListenTimer = setTimeout(function () {
+                  autoVoiceNumberPairSecondOnly(field2, isSecondText, stepAtCall);
+                }, 600);
+              }
+            }
           );
         }, 400);
       } else {
         document.getElementById('statusMsg').textContent =
-          'Did not catch a number from "' + text + '". Type it in manually.';
+          'Did not catch a number. Say it again.';
+        if (current === stepAtCall) autoListenTimer = setTimeout(function () { autoVoiceNumberPair(field1, field2, isSecondText); }, 600);
       }
     },
-    function () { }
+    function (err) {
+      if (err !== 'not-allowed' && current === stepAtCall) {
+        autoListenTimer = setTimeout(function () { autoVoiceNumberPair(field1, field2, isSecondText); }, 600);
+      }
+    }
+  );
+}
+
+function autoVoiceNumberPairSecondOnly(field2, isSecondText, stepAtCall) {
+  startRecognition(
+    function (text2) {
+      if (isSecondText) {
+        document.getElementById(field2).value = text2;
+        setTimeout(function () { go(1); }, 500);
+      } else {
+        var num2 = extractNumber(text2);
+        if (num2 !== null) {
+          document.getElementById(field2).value = num2;
+          setTimeout(function () { go(1); }, 500);
+        } else if (current === stepAtCall) {
+          autoListenTimer = setTimeout(function () { autoVoiceNumberPairSecondOnly(field2, isSecondText, stepAtCall); }, 600);
+        }
+      }
+    },
+    function (err) {
+      if (err !== 'not-allowed' && current === stepAtCall) {
+        autoListenTimer = setTimeout(function () { autoVoiceNumberPairSecondOnly(field2, isSecondText, stepAtCall); }, 600);
+      }
+    }
+  );
+}
+
+function autoVoiceCommandOnly() {
+  var stepAtCall = current;
+  startRecognition(
+    function () {
+      document.getElementById('statusMsg').textContent =
+        'Say next, back, skip, delete, list, or submit.';
+      if (current === stepAtCall) autoListenTimer = setTimeout(autoVoiceCommandOnly, 400);
+    },
+    function (err) {
+      if (err !== 'not-allowed' && current === stepAtCall) {
+        autoListenTimer = setTimeout(autoVoiceCommandOnly, 600);
+      }
+    }
   );
 }
 
@@ -447,6 +608,7 @@ function triggerAutoListenForStep(i) {
     else if (i === 8) autoVoiceNumberPair('unitCost', 'supplier', true);
     else if (i === 10) autoVoiceYesNo();
     else if (i === 11) autoVoiceText('notes');
+    else autoVoiceCommandOnly();
   }, 600);
 }
 
