@@ -26,12 +26,14 @@
   .btn-back { background: #e5e5e5; color: #333; }
   .btn-next { background: #1F3864; color: #fff; }
   .btn-submit { background: #2e7d32; color: #fff; }
+  .photo-btns { display: flex; flex-direction: column; gap: 10px; }
   .photo-preview { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-top: 10px; display: none; }
   .review-line { font-size: 13px; padding: 6px 0; border-bottom: 1px solid #eee; }
   .review-line b { color: #1F3864; }
   .status { text-align: center; color: #fff; margin-top: 14px; font-size: 13px; }
   .add-new-row { margin-top: 8px; display: none; }
-  .voice-legend { text-align: center; font-size: 11px; color: #9aa5b8; margin-top: 14px; }
+  .voice-legend { text-align: center; font-size: 14px; line-height: 1.6; color: #d7deed; margin-top: 16px; }
+  .voice-legend b { color: #fff; }
 </style>
 </head>
 <body>
@@ -42,9 +44,15 @@
 
     <div class="step active" data-step="0">
       <label class="q">Photo</label>
-      <input type="file" id="photoInput" accept="image/*" capture="environment">
+      <div class="photo-btns">
+        <button type="button" class="nav-btn btn-next" onclick="document.getElementById('photoCameraInput').click()">Take Photo</button>
+        <button type="button" class="nav-btn btn-next" onclick="document.getElementById('photoFileInput').click()">Choose from Library</button>
+        <button type="button" class="nav-btn btn-back" onclick="go(1)">Skip</button>
+      </div>
+      <input type="file" id="photoCameraInput" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="photoFileInput" accept="image/*" style="display:none">
       <img id="photoPreview" class="photo-preview">
-      <div class="hint">Optional. Skip if you will add it later.</div>
+      <div class="hint">Take a new photo, choose an existing one, or skip.</div>
     </div>
 
     <div class="step" data-step="1">
@@ -163,7 +171,7 @@
       <button type="button" class="nav-btn btn-submit" id="submitBtn" onclick="submitForm()" style="display:none">Save to Inventory</button>
       <button type="button" class="nav-btn btn-next" id="addAnotherBtn" onclick="resetForm()" style="display:none">Add Another Item</button>
     </div>
-    <div class="voice-legend">Say: Next, Back, Skip, Repeat, Delete, List, Submit</div>
+    <div class="voice-legend"><b>Next</b> &middot; <b>Back</b> &middot; <b>Skip</b> &middot; <b>Repeat</b> &middot; <b>Delete</b> &middot; <b>List</b> &middot; <b>Review</b> &middot; <b>Submit</b></div>
   </div>
   <div class="status" id="statusMsg"></div>
 </div>
@@ -195,7 +203,7 @@ function showStep(i) {
   if (isReview) buildReview();
   updateProgress();
   document.getElementById('statusMsg').textContent = '';
-  if (lastGoDelta > 0) triggerAutoListenForStep(i);
+  triggerAutoListenForStep(i);
 }
 
 var lastGoDelta = 1;
@@ -252,8 +260,7 @@ function fillSelect(id, values, label) {
   });
 });
 
-document.getElementById('photoInput').addEventListener('change', function (e) {
-  var file = e.target.files[0];
+function handlePhotoFile(file) {
   if (!file) return;
   photoMime = file.type;
   photoFilename = file.name;
@@ -265,6 +272,12 @@ document.getElementById('photoInput').addEventListener('change', function (e) {
     img.style.display = 'block';
   };
   reader.readAsDataURL(file);
+}
+document.getElementById('photoCameraInput').addEventListener('change', function (e) {
+  handlePhotoFile(e.target.files[0]);
+});
+document.getElementById('photoFileInput').addEventListener('change', function (e) {
+  handlePhotoFile(e.target.files[0]);
 });
 
 // ---- Voice input ----
@@ -275,8 +288,11 @@ var CATEGORY_OPTIONS = ['Engine', 'Generator', 'Electrical', 'HVAC', 'Watermaker
   'Deck/Crane', 'Safety Equipment', 'Tender/Outboard', 'Galley',
   'Navigation/Electronics', 'Consumables', 'Other'];
 
+var recognitionBusy = false;
 function startRecognition(onResult, onFail) {
   if (!Recognition) { onFail('unsupported'); return; }
+  if (recognitionBusy) { onFail('busy'); return; }
+  recognitionBusy = true;
   var recog = new Recognition();
   recog.lang = 'en-US';
   recog.interimResults = false;
@@ -285,6 +301,7 @@ function startRecognition(onResult, onFail) {
   try {
     recog.start();
   } catch (e) {
+    recognitionBusy = false;
     document.querySelectorAll('.mic-btn').forEach(function (b) { b.classList.remove('listening'); });
     onFail(e.message);
     return;
@@ -295,9 +312,58 @@ function startRecognition(onResult, onFail) {
     if (!handled) onResult(text);
   };
   recog.onend = function () {
+    recognitionBusy = false;
     document.querySelectorAll('.mic-btn').forEach(function (b) { b.classList.remove('listening'); });
   };
-  recog.onerror = function (event) { onFail(event.error); };
+  recog.onerror = function (event) {
+    recognitionBusy = false;
+    onFail(event.error);
+  };
+}
+
+var STEP_SELECTS = {
+  1: { sel: 'systemSelect', label: 'System' },
+  3: { sel: 'categorySelect', label: 'Category' },
+  5: { sel: 'locationSelect', label: 'Location' },
+  10: { sel: 'criticalSelect', label: 'Critical spare' }
+};
+
+var PREFERRED_VOICE_NAMES = ['Google US English', 'Samantha', 'Microsoft Aria Online (Natural) - English (United States)', 'Alex'];
+var cachedVoice = null;
+function getBestVoice() {
+  if (!window.speechSynthesis) return null;
+  if (cachedVoice) return cachedVoice;
+  var voices = window.speechSynthesis.getVoices();
+  for (var i = 0; i < PREFERRED_VOICE_NAMES.length; i++) {
+    var found = voices.filter(function (v) { return v.name === PREFERRED_VOICE_NAMES[i]; })[0];
+    if (found) { cachedVoice = found; return found; }
+  }
+  var enUS = voices.filter(function (v) { return v.lang === 'en-US'; })[0];
+  return enUS || null;
+}
+if (window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = function () { cachedVoice = null; };
+}
+
+function speakText(text) {
+  if (!window.speechSynthesis) return;
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'en-US';
+  utter.rate = 1.05;
+  var voice = getBestVoice();
+  if (voice) utter.voice = voice;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utter);
+}
+
+function speakOptionsForStep(i) {
+  var cfg = STEP_SELECTS[i];
+  if (!cfg) return false;
+  var select = document.getElementById(cfg.sel);
+  var opts = Array.prototype.map.call(select.options, function (o) { return o.textContent; })
+    .filter(function (t) { return t && t.indexOf('Select ') !== 0 && t !== '+ Add new'; });
+  document.getElementById('statusMsg').textContent = cfg.label + ': ' + opts.join(', ');
+  return true;
 }
 
 function tryGlobalCommand(text) {
@@ -318,7 +384,19 @@ function tryGlobalCommand(text) {
     triggerAutoListenForStep(current);
     return true;
   }
-  if (s === 'list' || s === 'review') {
+  if (s === 'list') {
+    var shown = speakOptionsForStep(current);
+    if (shown) {
+      triggerAutoListenForStep(current);
+    } else {
+      lastGoDelta = 1;
+      current = REVIEW_STEP;
+      showStep(current);
+      speakReview();
+    }
+    return true;
+  }
+  if (s === 'review') {
     lastGoDelta = 1;
     current = REVIEW_STEP;
     showStep(current);
@@ -366,10 +444,7 @@ function speakReview() {
   if (!window.speechSynthesis) return;
   setTimeout(function () {
     var text = document.getElementById('reviewBox').innerText.replace(/\n/g, '. ');
-    var utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'en-US';
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utter);
+    speakText(text);
   }, 300);
 }
 
@@ -722,7 +797,8 @@ function resetForm() {
   document.getElementById('criticalSelect').value = 'N';
   document.getElementById('systemNewRow').style.display = 'none';
   document.getElementById('locationNewRow').style.display = 'none';
-  document.getElementById('photoInput').value = '';
+  document.getElementById('photoCameraInput').value = '';
+  document.getElementById('photoFileInput').value = '';
   document.getElementById('photoPreview').style.display = 'none';
   photoBase64 = null; photoMime = null; photoFilename = null;
   document.getElementById('purchaseDate').valueAsDate = new Date();
