@@ -34,6 +34,7 @@
   .add-new-row { margin-top: 8px; display: none; }
   .voice-legend { text-align: center; font-size: 14px; line-height: 1.6; color: #d7deed; margin-top: 16px; }
   .voice-legend b { color: #fff; }
+  .active-field { outline: 3px solid #4f9cf9; outline-offset: -1px; }
 </style>
 </head>
 <body>
@@ -172,7 +173,7 @@
       <button type="button" class="nav-btn btn-submit" id="submitBtn" onclick="submitForm()" style="display:none">Save to Inventory</button>
       <button type="button" class="nav-btn btn-next" id="addAnotherBtn" onclick="resetForm()" style="display:none">Add Another Item</button>
     </div>
-    <div class="voice-legend"><b>Next</b> &middot; <b>Back</b> &middot; <b>Skip</b> &middot; <b>Repeat</b> &middot; <b>Delete</b> &middot; <b>List</b> &middot; <b>Review</b> &middot; <b>Submit</b></div>
+    <div class="voice-legend"><b>Next</b> &middot; <b>Back</b> &middot; <b>Skip</b> &middot; <b>Repeat</b> &middot; <b>Delete</b> &middot; <b>Up</b> &middot; <b>Down</b> &middot; <b>Spell</b> &middot; <b>List</b> &middot; <b>Review</b> &middot; <b>Save</b></div>
   </div>
   <div class="status" id="statusMsg"></div>
 </div>
@@ -382,8 +383,163 @@ function speakOptionsForStep(i) {
   return true;
 }
 
-function tryGlobalCommand(text) {
+var spellingActive = false;
+var spellingBuffer = '';
+var spellingFieldId = null;
+
+var NATO_LETTERS = {
+  alpha: 'a', bravo: 'b', charlie: 'c', delta: 'd', echo: 'e', foxtrot: 'f',
+  golf: 'g', hotel: 'h', india: 'i', juliet: 'j', juliett: 'j', kilo: 'k',
+  lima: 'l', mike: 'm', november: 'n', oscar: 'o', papa: 'p', quebec: 'q',
+  romeo: 'r', sierra: 's', tango: 't', uniform: 'u', victor: 'v',
+  whiskey: 'w', xray: 'x', 'x-ray': 'x', yankee: 'y', zulu: 'z'
+};
+var PHONETIC_LETTERS = {
+  bee: 'b', cee: 'c', see: 'c', sea: 'c', dee: 'd', ee: 'e', ef: 'f', eff: 'f',
+  gee: 'g', aitch: 'h', eye: 'i', jay: 'j', kay: 'k', el: 'l', ell: 'l',
+  em: 'm', en: 'n', oh: 'o', pee: 'p', cue: 'q', queue: 'q', ar: 'r',
+  ess: 's', tee: 't', you: 'u', vee: 'v', ex: 'x', why: 'y', zee: 'z', zed: 'z'
+};
+
+function letterFromWord(word) {
+  var w = word.toLowerCase().trim();
+  if (w.length === 1 && /[a-z0-9]/.test(w)) return w;
+  if (NATO_LETTERS[w]) return NATO_LETTERS[w];
+  if (PHONETIC_LETTERS[w]) return PHONETIC_LETTERS[w];
+  return null;
+}
+
+function resolveSpellTarget(i) {
+  if (i === 1) {
+    document.getElementById('systemSelect').value = '__new__';
+    document.getElementById('systemNewRow').style.display = 'block';
+    return 'systemNew';
+  }
+  if (i === 2) return 'partName';
+  if (i === 4) return 'description';
+  if (i === 5) {
+    document.getElementById('locationSelect').value = '__new__';
+    document.getElementById('locationNewRow').style.display = 'block';
+    return 'locationNew';
+  }
+  if (i === 6) return 'manufacturer';
+  if (i === 8) return 'supplier';
+  if (i === 11) return 'notes';
+  return null;
+}
+
+function updateSpellingField() {
+  document.getElementById(spellingFieldId).value = spellingBuffer;
+  document.getElementById('statusMsg').textContent =
+    'Spelling: ' + (spellingBuffer || '(nothing yet)') +
+    '. Letters, NATO words, "space", "dash", "delete", or "done".';
+}
+
+function startSpelling(fieldId) {
+  spellingActive = true;
+  spellingFieldId = fieldId;
+  spellingBuffer = document.getElementById(fieldId).value || '';
+  updateSpellingField();
+  autoListenTimer = setTimeout(listenForSpelling, 400);
+}
+
+function exitSpelling() {
+  spellingActive = false;
+  spellingFieldId = null;
+}
+
+function listenForSpelling() {
+  var stepAtCall = current;
+  startRecognition(
+    function (text) { handleSpellingInput(text, stepAtCall); },
+    function (err) {
+      if (err !== 'not-allowed' && spellingActive && current === stepAtCall) {
+        autoListenTimer = setTimeout(listenForSpelling, 500);
+      }
+    }
+  );
+}
+
+function handleSpellingInput(text, stepAtCall) {
   var s = text.toLowerCase().trim().replace(/[.!?]+$/, '');
+
+  if (s === 'next' || s === 'done' || s === 'finished' || s === 'stop') {
+    document.getElementById(spellingFieldId).value = spellingBuffer;
+    exitSpelling();
+    document.getElementById('statusMsg').textContent = '';
+    setTimeout(function () { go(1); }, 400);
+    return;
+  }
+  if (s === 'back') {
+    document.getElementById(spellingFieldId).value = spellingBuffer;
+    exitSpelling();
+    go(-1);
+    return;
+  }
+  if (s === 'delete' || s === 'backspace') {
+    spellingBuffer = spellingBuffer.slice(0, -1);
+    updateSpellingField();
+    autoListenTimer = setTimeout(listenForSpelling, 400);
+    return;
+  }
+  if (s === 'space') {
+    spellingBuffer += ' ';
+    updateSpellingField();
+    autoListenTimer = setTimeout(listenForSpelling, 400);
+    return;
+  }
+  if (s === 'dash' || s === 'hyphen') {
+    spellingBuffer += '-';
+    updateSpellingField();
+    autoListenTimer = setTimeout(listenForSpelling, 400);
+    return;
+  }
+  if (s === 'clear') {
+    spellingBuffer = '';
+    updateSpellingField();
+    autoListenTimer = setTimeout(listenForSpelling, 400);
+    return;
+  }
+
+  var letter = letterFromWord(s);
+  if (letter) {
+    spellingBuffer += letter;
+    updateSpellingField();
+    autoListenTimer = setTimeout(listenForSpelling, 400);
+    return;
+  }
+
+  var tokens = s.split(/\s+/);
+  var mapped = tokens.map(letterFromWord);
+  if (mapped.length > 0 && mapped.every(function (x) { return x; })) {
+    spellingBuffer += mapped.join('');
+    updateSpellingField();
+    autoListenTimer = setTimeout(listenForSpelling, 400);
+    return;
+  }
+
+  document.getElementById('statusMsg').textContent =
+    'Did not understand "' + text + '" while spelling. Say a letter, NATO word, space, dash, delete, or done.';
+  autoListenTimer = setTimeout(listenForSpelling, 500);
+}
+
+function tryGlobalCommand(text) {
+  if (spellingActive) {
+    handleSpellingInput(text, current);
+    return true;
+  }
+
+  var s = text.toLowerCase().trim().replace(/[.!?]+$/, '');
+  if (s === 'spell') {
+    var target = resolveSpellTarget(current);
+    if (target) {
+      startSpelling(target);
+    } else {
+      document.getElementById('statusMsg').textContent = 'Spelling is not available on this screen.';
+      triggerAutoListenForStep(current);
+    }
+    return true;
+  }
   if (current === SUCCESS_STEP && (s === 'next' || s === 'add another' || s === 'another')) {
     resetForm(); return true;
   }
@@ -395,9 +551,33 @@ function tryGlobalCommand(text) {
     return true;
   }
   if (s === 'delete' || s === 'clear') {
-    clearCurrentStepFields();
-    document.getElementById('statusMsg').textContent = 'Cleared.';
-    triggerAutoListenForStep(current);
+    var deletePair = STEP_PAIRS[current];
+    if (deletePair && activeSubField) {
+      document.getElementById(activeSubField).value = '';
+      document.getElementById('statusMsg').textContent = 'Cleared.';
+      var idx = deletePair.fields.indexOf(activeSubField);
+      autoListenTimer = setTimeout(function () {
+        listenSingleFieldCorrection(activeSubField, deletePair.types[idx]);
+      }, 400);
+    } else {
+      clearCurrentStepFields();
+      document.getElementById('statusMsg').textContent = 'Cleared.';
+      triggerAutoListenForStep(current);
+    }
+    return true;
+  }
+  if (s === 'up' || s === 'down') {
+    var udPair = STEP_PAIRS[current];
+    if (!udPair) {
+      document.getElementById('statusMsg').textContent = 'Up and down only apply on the quantity or cost screens.';
+      return true;
+    }
+    var otherIdx = (activeSubField === udPair.fields[0]) ? 1 : 0;
+    setActiveSubField(udPair.fields[otherIdx]);
+    document.getElementById('statusMsg').textContent = 'Say the new value.';
+    autoListenTimer = setTimeout(function () {
+      listenSingleFieldCorrection(udPair.fields[otherIdx], udPair.types[otherIdx]);
+    }, 400);
     return true;
   }
   if (s === 'list') {
@@ -564,78 +744,82 @@ function autoVoiceYesNo() {
   );
 }
 
-function autoVoiceNumberPair(field1, field2, isSecondText) {
-  var stepAtCall = current;
+var STEP_PAIRS = {
+  7: { fields: ['qty', 'minStock'], types: ['number', 'number'] },
+  8: { fields: ['unitCost', 'supplier'], types: ['number', 'text'] }
+};
+var activeSubField = null;
+
+function setActiveSubField(fieldId) {
+  activeSubField = fieldId;
+  document.querySelectorAll('.field-row input').forEach(function (inp) {
+    inp.classList.remove('active-field');
+  });
+  var el = document.getElementById(fieldId);
+  if (el) el.classList.add('active-field');
+}
+
+function listenPairField(stepAtCall, pairKey, idx) {
+  var pair = STEP_PAIRS[pairKey];
+  var fieldId = pair.fields[idx];
+  var type = pair.types[idx];
+  setActiveSubField(fieldId);
   startRecognition(
     function (text) {
-      var num = extractNumber(text);
-      if (num !== null) {
-        document.getElementById(field1).value = num;
-        document.getElementById('statusMsg').textContent = '';
-        autoListenTimer = setTimeout(function () {
-          startRecognition(
-            function (text2) {
-              if (isSecondText) {
-                document.getElementById(field2).value = text2;
-                setTimeout(function () { go(1); }, 500);
-              } else {
-                var num2 = extractNumber(text2);
-                if (num2 !== null) {
-                  document.getElementById(field2).value = num2;
-                  setTimeout(function () { go(1); }, 500);
-                } else {
-                  document.getElementById('statusMsg').textContent =
-                    'Did not catch a number for the second value. Say it again.';
-                  if (current === stepAtCall) {
-                    autoListenTimer = setTimeout(function () {
-                      autoVoiceNumberPairSecondOnly(field2, isSecondText, stepAtCall);
-                    }, 600);
-                  }
-                }
-              }
-            },
-            function (err) {
-              if (err !== 'not-allowed' && current === stepAtCall) {
-                autoListenTimer = setTimeout(function () {
-                  autoVoiceNumberPairSecondOnly(field2, isSecondText, stepAtCall);
-                }, 600);
-              }
-            }
-          );
-        }, 400);
+      if (type === 'number') {
+        var num = extractNumber(text);
+        if (num !== null) {
+          document.getElementById(fieldId).value = num;
+          document.getElementById('statusMsg').textContent = '';
+          advancePairOrFinish(stepAtCall, pairKey, idx);
+        } else {
+          document.getElementById('statusMsg').textContent = 'Did not catch a number. Say it again.';
+          if (current === stepAtCall) autoListenTimer = setTimeout(function () { listenPairField(stepAtCall, pairKey, idx); }, 600);
+        }
       } else {
-        document.getElementById('statusMsg').textContent =
-          'Did not catch a number. Say it again.';
-        if (current === stepAtCall) autoListenTimer = setTimeout(function () { autoVoiceNumberPair(field1, field2, isSecondText); }, 600);
+        document.getElementById(fieldId).value = text;
+        advancePairOrFinish(stepAtCall, pairKey, idx);
       }
     },
     function (err) {
       if (err !== 'not-allowed' && current === stepAtCall) {
-        autoListenTimer = setTimeout(function () { autoVoiceNumberPair(field1, field2, isSecondText); }, 600);
+        autoListenTimer = setTimeout(function () { listenPairField(stepAtCall, pairKey, idx); }, 600);
       }
     }
   );
 }
 
-function autoVoiceNumberPairSecondOnly(field2, isSecondText, stepAtCall) {
+function advancePairOrFinish(stepAtCall, pairKey, idx) {
+  if (idx === 0) {
+    autoListenTimer = setTimeout(function () { listenPairField(stepAtCall, pairKey, 1); }, 400);
+  } else {
+    setTimeout(function () { go(1); }, 500);
+  }
+}
+
+function listenSingleFieldCorrection(fieldId, type) {
+  var stepAtCall = current;
   startRecognition(
-    function (text2) {
-      if (isSecondText) {
-        document.getElementById(field2).value = text2;
-        setTimeout(function () { go(1); }, 500);
-      } else {
-        var num2 = extractNumber(text2);
-        if (num2 !== null) {
-          document.getElementById(field2).value = num2;
-          setTimeout(function () { go(1); }, 500);
-        } else if (current === stepAtCall) {
-          autoListenTimer = setTimeout(function () { autoVoiceNumberPairSecondOnly(field2, isSecondText, stepAtCall); }, 600);
+    function (text) {
+      if (type === 'number') {
+        var num = extractNumber(text);
+        if (num !== null) {
+          document.getElementById(fieldId).value = num;
+          document.getElementById('statusMsg').textContent = 'Updated.';
+        } else {
+          document.getElementById('statusMsg').textContent = 'Did not catch a number.';
         }
+      } else {
+        document.getElementById(fieldId).value = text;
+        document.getElementById('statusMsg').textContent = 'Updated.';
       }
+      autoListenTimer = setTimeout(function () {
+        if (current === stepAtCall) autoVoiceCommandOnly();
+      }, 400);
     },
     function (err) {
       if (err !== 'not-allowed' && current === stepAtCall) {
-        autoListenTimer = setTimeout(function () { autoVoiceNumberPairSecondOnly(field2, isSecondText, stepAtCall); }, 600);
+        autoListenTimer = setTimeout(function () { listenSingleFieldCorrection(fieldId, type); }, 600);
       }
     }
   );
@@ -646,7 +830,7 @@ function autoVoiceCommandOnly() {
   startRecognition(
     function () {
       document.getElementById('statusMsg').textContent =
-        'Say next, back, skip, delete, list, or submit.';
+        'Say next, back, skip, delete, list, spell, or save.';
       if (current === stepAtCall) autoListenTimer = setTimeout(autoVoiceCommandOnly, 400);
     },
     function (err) {
@@ -696,8 +880,8 @@ function triggerAutoListenForStep(i) {
     else if (i === 4) autoVoiceText('description');
     else if (i === 5) autoVoiceDropdownOrNew('locationSelect', 'locationNew', 'locationNewRow');
     else if (i === 6) autoVoiceText('manufacturer');
-    else if (i === 7) autoVoiceNumberPair('qty', 'minStock', false);
-    else if (i === 8) autoVoiceNumberPair('unitCost', 'supplier', true);
+    else if (i === 7) listenPairField(i, 7, 0);
+    else if (i === 8) listenPairField(i, 8, 0);
     else if (i === 10) autoVoiceYesNo();
     else if (i === 11) autoVoiceText('notes');
     else autoVoiceCommandOnly();
