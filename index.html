@@ -162,6 +162,7 @@
         <div style="font-size:48px;">&#9989;</div>
         <div style="font-size:18px; font-weight:bold; color:#1F3864; margin-top:10px;">Saved to Inventory</div>
         <div style="font-size:13px; color:#757575; margin-top:6px;" id="successDetail"></div>
+        <div style="font-size:13px; color:#1F3864; margin-top:14px; font-weight:bold;">Say "Next" to add another item</div>
       </div>
     </div>
 
@@ -210,6 +211,7 @@ var lastGoDelta = 1;
 function go(delta) {
   var next = current + delta;
   if (next < 0 || next > TOTAL_STEPS - 1) return;
+  stopActiveRecognition();
   lastGoDelta = delta;
   current = next;
   showStep(current);
@@ -289,11 +291,22 @@ var CATEGORY_OPTIONS = ['Engine', 'Generator', 'Electrical', 'HVAC', 'Watermaker
   'Navigation/Electronics', 'Consumables', 'Other'];
 
 var recognitionBusy = false;
+var activeRecognition = null;
+
+function stopActiveRecognition() {
+  if (activeRecognition) {
+    try { activeRecognition.abort(); } catch (e) { /* already stopped */ }
+    activeRecognition = null;
+  }
+  recognitionBusy = false;
+}
+
 function startRecognition(onResult, onFail) {
   if (!Recognition) { onFail('unsupported'); return; }
   if (recognitionBusy) { onFail('busy'); return; }
   recognitionBusy = true;
   var recog = new Recognition();
+  activeRecognition = recog;
   recog.lang = 'en-US';
   recog.interimResults = false;
   recog.maxAlternatives = 1;
@@ -302,6 +315,7 @@ function startRecognition(onResult, onFail) {
     recog.start();
   } catch (e) {
     recognitionBusy = false;
+    activeRecognition = null;
     document.querySelectorAll('.mic-btn').forEach(function (b) { b.classList.remove('listening'); });
     onFail(e.message);
     return;
@@ -313,10 +327,12 @@ function startRecognition(onResult, onFail) {
   };
   recog.onend = function () {
     recognitionBusy = false;
+    activeRecognition = null;
     document.querySelectorAll('.mic-btn').forEach(function (b) { b.classList.remove('listening'); });
   };
   recog.onerror = function (event) {
     recognitionBusy = false;
+    activeRecognition = null;
     onFail(event.error);
   };
 }
@@ -671,6 +687,7 @@ document.querySelectorAll('input[type=text], input[type=number], textarea').forE
 
 function triggerAutoListenForStep(i) {
   clearTimeout(autoListenTimer);
+  stopActiveRecognition();
   if (!Recognition) return;
   autoListenTimer = setTimeout(function () {
     if (i === 1) autoVoiceDropdownOrNew('systemSelect', 'systemNew', 'systemNewRow');
@@ -787,6 +804,7 @@ function submitForm() {
 }
 
 function resetForm() {
+  stopActiveRecognition();
   ['partName', 'description', 'manufacturer', 'qty', 'minStock', 'unitCost', 'supplier',
    'expirationDate', 'notes', 'systemNew', 'locationNew'].forEach(function (id) {
     document.getElementById(id).value = '';
