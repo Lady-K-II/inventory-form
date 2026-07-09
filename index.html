@@ -34,7 +34,6 @@
   .add-new-row { margin-top: 8px; display: none; }
   .voice-legend { text-align: center; font-size: 14px; line-height: 1.6; color: #d7deed; margin-top: 16px; }
   .voice-legend b { color: #fff; }
-  .active-field { outline: 3px solid #4f9cf9; outline-offset: -1px; }
 </style>
 </head>
 <body>
@@ -108,36 +107,50 @@
     </div>
 
     <div class="step" data-step="7">
-      <label class="q">Quantity on hand and minimum stock required?</label>
+      <label class="q">Quantity on hand?</label>
       <div class="field-row">
         <input type="number" id="qty" placeholder="Qty on hand" min="0">
-        <input type="number" id="minStock" placeholder="Min required" min="0">
       </div>
     </div>
 
     <div class="step" data-step="8">
-      <label class="q">Unit cost and supplier?</label>
+      <label class="q">Minimum stock required?</label>
+      <div class="field-row">
+        <input type="number" id="minStock" placeholder="Min required" min="0">
+      </div>
+    </div>
+
+    <div class="step" data-step="9">
+      <label class="q">Unit cost?</label>
       <div class="field-row">
         <input type="number" id="unitCost" placeholder="Unit cost (EUR)" step="0.01" min="0">
       </div>
-      <div class="field-row" style="margin-top:8px">
+    </div>
+
+    <div class="step" data-step="10">
+      <label class="q">Supplier?</label>
+      <div class="field-row">
         <input type="text" id="supplier" placeholder="Supplier / source">
         <button type="button" class="mic-btn" data-target="supplier">MIC</button>
       </div>
     </div>
 
-    <div class="step" data-step="9">
-      <label class="q">Purchase date and expiration date?</label>
+    <div class="step" data-step="11">
+      <label class="q">Purchase date?</label>
       <div class="field-row">
         <input type="date" id="purchaseDate">
       </div>
-      <div class="field-row" style="margin-top:8px">
-        <input type="date" id="expirationDate">
-      </div>
-      <div class="hint">Leave expiration blank for parts with no shelf life.</div>
     </div>
 
-    <div class="step" data-step="10">
+    <div class="step" data-step="12">
+      <label class="q">Expiration date?</label>
+      <div class="field-row">
+        <input type="date" id="expirationDate">
+      </div>
+      <div class="hint">Leave blank for parts with no shelf life.</div>
+    </div>
+
+    <div class="step" data-step="13">
       <label class="q">Critical spare?</label>
       <select id="criticalSelect">
         <option value="N" selected>No</option>
@@ -145,7 +158,7 @@
       </select>
     </div>
 
-    <div class="step" data-step="11">
+    <div class="step" data-step="14">
       <label class="q">Any notes?</label>
       <div class="field-row">
         <textarea id="notes" placeholder="Lead time, order status, anything else"></textarea>
@@ -153,12 +166,12 @@
       </div>
     </div>
 
-    <div class="step" data-step="12">
+    <div class="step" data-step="15">
       <label class="q">Review</label>
       <div id="reviewBox"></div>
     </div>
 
-    <div class="step" data-step="13" id="successStep">
+    <div class="step" data-step="16" id="successStep">
       <div style="text-align:center; padding: 20px 0;">
         <div style="font-size:48px;">&#9989;</div>
         <div style="font-size:18px; font-weight:bold; color:#1F3864; margin-top:10px;">Saved to Inventory</div>
@@ -173,7 +186,7 @@
       <button type="button" class="nav-btn btn-submit" id="submitBtn" onclick="submitForm()" style="display:none">Save to Inventory</button>
       <button type="button" class="nav-btn btn-next" id="addAnotherBtn" onclick="resetForm()" style="display:none">Add Another Item</button>
     </div>
-    <div class="voice-legend"><b>Next</b> &middot; <b>Back</b> &middot; <b>Skip</b> &middot; <b>Repeat</b> &middot; <b>Delete</b> &middot; <b>Up</b> &middot; <b>Down</b> &middot; <b>Spell</b> &middot; <b>List</b> &middot; <b>Review</b> &middot; <b>Save</b></div>
+    <div class="voice-legend"><b>Next</b> &middot; <b>Back</b> &middot; <b>Skip</b> &middot; <b>Repeat</b> &middot; <b>Delete</b> &middot; <b>Spell</b> &middot; <b>List</b> &middot; <b>Review</b> &middot; <b>Save</b></div>
   </div>
   <div class="status" id="statusMsg"></div>
 </div>
@@ -181,9 +194,9 @@
 <script>
 var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxb1kqqkqcgeFFJXs8mXntI_uU9G3g-U-pYxH4KMOPeBc_uBOq1_mU17aDRb_VCJfbiNg/exec';
 
-var REVIEW_STEP = 12;
-var SUCCESS_STEP = 13;
-var TOTAL_STEPS = 13;
+var REVIEW_STEP = 15;
+var SUCCESS_STEP = 16;
+var TOTAL_STEPS = 16;
 var current = 0;
 var photoBase64 = null, photoMime = null, photoFilename = null;
 
@@ -342,7 +355,7 @@ var STEP_SELECTS = {
   1: { sel: 'systemSelect', label: 'System' },
   3: { sel: 'categorySelect', label: 'Category' },
   5: { sel: 'locationSelect', label: 'Location' },
-  10: { sel: 'criticalSelect', label: 'Critical spare' }
+  13: { sel: 'criticalSelect', label: 'Critical spare' }
 };
 
 var PREFERRED_VOICE_NAMES = ['Google US English', 'Samantha', 'Microsoft Aria Online (Natural) - English (United States)', 'Alex'];
@@ -423,8 +436,8 @@ function resolveSpellTarget(i) {
     return 'locationNew';
   }
   if (i === 6) return 'manufacturer';
-  if (i === 8) return 'supplier';
-  if (i === 11) return 'notes';
+  if (i === 10) return 'supplier';
+  if (i === 14) return 'notes';
   return null;
 }
 
@@ -456,6 +469,9 @@ function listenForSpelling() {
       if (err !== 'not-allowed' && spellingActive && current === stepAtCall) {
         autoListenTimer = setTimeout(listenForSpelling, 500);
       }
+    }
+  );
+}
     }
   );
 }
@@ -551,33 +567,9 @@ function tryGlobalCommand(text) {
     return true;
   }
   if (s === 'delete' || s === 'clear') {
-    var deletePair = STEP_PAIRS[current];
-    if (deletePair && activeSubField) {
-      document.getElementById(activeSubField).value = '';
-      document.getElementById('statusMsg').textContent = 'Cleared.';
-      var idx = deletePair.fields.indexOf(activeSubField);
-      autoListenTimer = setTimeout(function () {
-        listenSingleFieldCorrection(activeSubField, deletePair.types[idx]);
-      }, 400);
-    } else {
-      clearCurrentStepFields();
-      document.getElementById('statusMsg').textContent = 'Cleared.';
-      triggerAutoListenForStep(current);
-    }
-    return true;
-  }
-  if (s === 'up' || s === 'down') {
-    var udPair = STEP_PAIRS[current];
-    if (!udPair) {
-      document.getElementById('statusMsg').textContent = 'Up and down only apply on the quantity or cost screens.';
-      return true;
-    }
-    var otherIdx = (activeSubField === udPair.fields[0]) ? 1 : 0;
-    setActiveSubField(udPair.fields[otherIdx]);
-    document.getElementById('statusMsg').textContent = 'Say the new value.';
-    autoListenTimer = setTimeout(function () {
-      listenSingleFieldCorrection(udPair.fields[otherIdx], udPair.types[otherIdx]);
-    }, 400);
+    clearCurrentStepFields();
+    document.getElementById('statusMsg').textContent = 'Cleared.';
+    triggerAutoListenForStep(current);
     return true;
   }
   if (s === 'list') {
@@ -625,13 +617,15 @@ function clearCurrentStepFields() {
     document.getElementById('manufacturer').value = '';
   } else if (current === 7) {
     document.getElementById('qty').value = '';
-    document.getElementById('minStock').value = '';
   } else if (current === 8) {
+    document.getElementById('minStock').value = '';
+  } else if (current === 9) {
     document.getElementById('unitCost').value = '';
-    document.getElementById('supplier').value = '';
   } else if (current === 10) {
+    document.getElementById('supplier').value = '';
+  } else if (current === 13) {
     document.getElementById('criticalSelect').value = 'N';
-  } else if (current === 11) {
+  } else if (current === 14) {
     document.getElementById('notes').value = '';
   }
 }
@@ -744,82 +738,22 @@ function autoVoiceYesNo() {
   );
 }
 
-var STEP_PAIRS = {
-  7: { fields: ['qty', 'minStock'], types: ['number', 'number'] },
-  8: { fields: ['unitCost', 'supplier'], types: ['number', 'text'] }
-};
-var activeSubField = null;
-
-function setActiveSubField(fieldId) {
-  activeSubField = fieldId;
-  document.querySelectorAll('.field-row input').forEach(function (inp) {
-    inp.classList.remove('active-field');
-  });
-  var el = document.getElementById(fieldId);
-  if (el) el.classList.add('active-field');
-}
-
-function listenPairField(stepAtCall, pairKey, idx) {
-  var pair = STEP_PAIRS[pairKey];
-  var fieldId = pair.fields[idx];
-  var type = pair.types[idx];
-  setActiveSubField(fieldId);
-  startRecognition(
-    function (text) {
-      if (type === 'number') {
-        var num = extractNumber(text);
-        if (num !== null) {
-          document.getElementById(fieldId).value = num;
-          document.getElementById('statusMsg').textContent = '';
-          advancePairOrFinish(stepAtCall, pairKey, idx);
-        } else {
-          document.getElementById('statusMsg').textContent = 'Did not catch a number. Say it again.';
-          if (current === stepAtCall) autoListenTimer = setTimeout(function () { listenPairField(stepAtCall, pairKey, idx); }, 600);
-        }
-      } else {
-        document.getElementById(fieldId).value = text;
-        advancePairOrFinish(stepAtCall, pairKey, idx);
-      }
-    },
-    function (err) {
-      if (err !== 'not-allowed' && current === stepAtCall) {
-        autoListenTimer = setTimeout(function () { listenPairField(stepAtCall, pairKey, idx); }, 600);
-      }
-    }
-  );
-}
-
-function advancePairOrFinish(stepAtCall, pairKey, idx) {
-  if (idx === 0) {
-    autoListenTimer = setTimeout(function () { listenPairField(stepAtCall, pairKey, 1); }, 400);
-  } else {
-    setTimeout(function () { go(1); }, 500);
-  }
-}
-
-function listenSingleFieldCorrection(fieldId, type) {
+function autoVoiceNumber(fieldId) {
   var stepAtCall = current;
   startRecognition(
     function (text) {
-      if (type === 'number') {
-        var num = extractNumber(text);
-        if (num !== null) {
-          document.getElementById(fieldId).value = num;
-          document.getElementById('statusMsg').textContent = 'Updated.';
-        } else {
-          document.getElementById('statusMsg').textContent = 'Did not catch a number.';
-        }
+      var num = extractNumber(text);
+      if (num !== null) {
+        document.getElementById(fieldId).value = num;
+        setTimeout(function () { go(1); }, 500);
       } else {
-        document.getElementById(fieldId).value = text;
-        document.getElementById('statusMsg').textContent = 'Updated.';
+        document.getElementById('statusMsg').textContent = 'Did not catch a number. Say it again.';
+        if (current === stepAtCall) autoListenTimer = setTimeout(function () { autoVoiceNumber(fieldId); }, 600);
       }
-      autoListenTimer = setTimeout(function () {
-        if (current === stepAtCall) autoVoiceCommandOnly();
-      }, 400);
     },
     function (err) {
       if (err !== 'not-allowed' && current === stepAtCall) {
-        autoListenTimer = setTimeout(function () { listenSingleFieldCorrection(fieldId, type); }, 600);
+        autoListenTimer = setTimeout(function () { autoVoiceNumber(fieldId); }, 600);
       }
     }
   );
@@ -880,10 +814,12 @@ function triggerAutoListenForStep(i) {
     else if (i === 4) autoVoiceText('description');
     else if (i === 5) autoVoiceDropdownOrNew('locationSelect', 'locationNew', 'locationNewRow');
     else if (i === 6) autoVoiceText('manufacturer');
-    else if (i === 7) listenPairField(i, 7, 0);
-    else if (i === 8) listenPairField(i, 8, 0);
-    else if (i === 10) autoVoiceYesNo();
-    else if (i === 11) autoVoiceText('notes');
+    else if (i === 7) autoVoiceNumber('qty');
+    else if (i === 8) autoVoiceNumber('minStock');
+    else if (i === 9) autoVoiceNumber('unitCost');
+    else if (i === 10) autoVoiceText('supplier');
+    else if (i === 13) autoVoiceYesNo();
+    else if (i === 14) autoVoiceText('notes');
     else autoVoiceCommandOnly();
   }, 600);
 }
