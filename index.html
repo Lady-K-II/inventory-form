@@ -276,16 +276,24 @@ function fillSelect(id, values, label) {
   });
 });
 
+var photoAnalysis = null;
+
 function handlePhotoFile(file) {
   if (!file) return;
   photoMime = file.type;
   photoFilename = file.name;
+  photoAnalysis = null;
   var reader = new FileReader();
   reader.onload = function () {
     photoBase64 = reader.result.split(',')[1];
     var img = document.getElementById('photoPreview');
     img.src = reader.result;
     img.style.display = 'block';
+    postToScript({ action: 'analyzePhoto', base64Data: photoBase64, mimeType: photoMime })
+      .then(function (res) {
+        if (!res.error) photoAnalysis = res;
+      })
+      .catch(function () { });
   };
   reader.readAsDataURL(file);
 }
@@ -296,7 +304,6 @@ document.getElementById('photoFileInput').addEventListener('change', function (e
   handlePhotoFile(e.target.files[0]);
 });
 
-// ---- Voice input ----
 var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 var autoListenTimer = null;
 
@@ -309,7 +316,7 @@ var activeRecognition = null;
 
 function stopActiveRecognition() {
   if (activeRecognition) {
-    try { activeRecognition.abort(); } catch (e) { /* already stopped */ }
+    try { activeRecognition.abort(); } catch (e) { }
     activeRecognition = null;
   }
   recognitionBusy = false;
@@ -469,9 +476,6 @@ function listenForSpelling() {
       if (err !== 'not-allowed' && spellingActive && current === stepAtCall) {
         autoListenTimer = setTimeout(listenForSpelling, 500);
       }
-    }
-  );
-}
     }
   );
 }
@@ -803,9 +807,27 @@ document.querySelectorAll('input[type=text], input[type=number], textarea').forE
   el.addEventListener('focus', function () { clearTimeout(autoListenTimer); });
 });
 
+function applySuggestion(fieldId, value, label) {
+  if (!value) return;
+  document.getElementById(fieldId).value = value;
+  document.getElementById('statusMsg').textContent =
+    'Suggested from photo, ' + label + ': "' + value + '". Say "next" to accept, or say the correct value to change it.';
+}
+
 function triggerAutoListenForStep(i) {
   clearTimeout(autoListenTimer);
   stopActiveRecognition();
+  if (photoAnalysis) {
+    if (i === 2) applySuggestion('partName', photoAnalysis.partName, 'part name');
+    else if (i === 3 && photoAnalysis.category) {
+      var catMatch = matchAgainstList(photoAnalysis.category, CATEGORY_OPTIONS);
+      if (catMatch) applySuggestion('categorySelect', catMatch, 'category');
+    } else if (i === 4) applySuggestion('description', photoAnalysis.description, 'description');
+    else if (i === 6) {
+      var combined = [photoAnalysis.manufacturer, photoAnalysis.partNumber].filter(function (x) { return x; }).join(' ');
+      applySuggestion('manufacturer', combined, 'manufacturer');
+    }
+  }
   if (!Recognition) return;
   autoListenTimer = setTimeout(function () {
     if (i === 1) autoVoiceDropdownOrNew('systemSelect', 'systemNew', 'systemNewRow');
