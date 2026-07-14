@@ -225,6 +225,20 @@ var lastGoDelta = 1;
 function go(delta) {
   var next = current + delta;
   if (next < 0 || next > TOTAL_STEPS - 1) return;
+
+  if (current === 0 && delta > 0 && photoBase64 && photoAnalysisPromise) {
+    document.getElementById('''statusMsg''').textContent = '''Analyzing photo, one moment...''';
+    var timeout = new Promise(function (resolve) { setTimeout(resolve, 15000); });
+    Promise.race([photoAnalysisPromise, timeout]).then(function () {
+      document.getElementById('''statusMsg''').textContent = '''''';
+      stopActiveRecognition();
+      lastGoDelta = delta;
+      current = next;
+      showStep(current);
+    });
+    return;
+  }
+
   stopActiveRecognition();
   lastGoDelta = delta;
   current = next;
@@ -277,6 +291,7 @@ function fillSelect(id, values, label) {
 });
 
 var photoAnalysis = null;
+var photoAnalysisPromise = null;
 
 function handlePhotoFile(file) {
   if (!file) return;
@@ -289,7 +304,7 @@ function handlePhotoFile(file) {
     var img = document.getElementById('photoPreview');
     img.src = reader.result;
     img.style.display = 'block';
-    postToScript({ action: 'analyzePhoto', base64Data: photoBase64, mimeType: photoMime })
+    photoAnalysisPromise = postToScript({ action: 'analyzePhoto', base64Data: photoBase64, mimeType: photoMime })
       .then(function (res) {
         if (!res.error) photoAnalysis = res;
       })
